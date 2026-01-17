@@ -1,21 +1,17 @@
-# gdmatrix
+# fabric_api
 
-Makes implementing the Matrix spec into Godot 4.x projects easier.
+this is a tool to make easier, the use of various API in godot.
 
-## notice:
+the concept is that any API can be interfaced with using a generic
+interface. we want to define that generic interface and setup
+some protocols here for free use. 
 
-this is not complete but includes quite a bit of functionality already. i will be updating this to make it more generalized as it might rely on some barkvr specific things right now.
+we are defining classes for each piece, this is to apply a schema and 
+acts, essentially, as a method of having structs in gdscript. 
 
-- login with username/password
-- caches exisiting logins to disk automatically
-- (wip) simple route for binding UI to recieved events (all the methods for responding to events are in one place)
-- retrieve rooms
-- retrieve messages for a selected room
-- send messages
-- encryption is coming soon
+in the future, an interface with the same classnames will be made into a 
+library in a lower level language and a gdextension that will shadow the
+gdscript version and will be a drop-in-replacement.
 
-i am already working on a code generator that will be able to take the api.json from the matrix spec repos to generate the api network calls
+we are starting with Matrix as it is currently needed for the barkvr project.
 
-## doc:
-
-TODO: write documentation
