@@ -76,16 +76,13 @@ signal got_new_message(event:Dictionary)
 
 var requestParent:Node = self
 
-#threaded handling variables
-var user_data_mutex := Mutex.new()
+var fresh_login := false
 
 #aliases
 var joinedRooms : Dictionary = {}:
 	get:
 		if "joined_rooms" not in userData:
-			user_data_mutex.lock()
 			userData.joined_rooms = {}
-			user_data_mutex.unlock()
 		return userData.joined_rooms
 	set(val):
 		joinedRooms = val
@@ -101,6 +98,7 @@ func _ready():
 			got_well_known.emit(home_server, base_url)
 		)
 	api.user_logged_in.connect(func(result:int,response_code:int,header:PackedStringArray,body:PackedByteArray):
+		fresh_login = true
 		var msg = body.get_string_from_ascii()
 		var msgJson : Dictionary = JSON.parse_string(msg)
 		if msgJson:
@@ -110,7 +108,7 @@ func _ready():
 				if msgJson.has('retry_after_ms'):
 					Notifyvr.send_notification("Please try again after: "+str(msgJson.retry_after_ms/1000)+" seconds")
 				return
-			if msgJson.has('access_token') and msgJson.has('well_known'):
+			if msgJson.has('access_token'):
 				if !userData.has("login"):
 					userData.login = {}
 				userData.login.user_id = msgJson.user_id
@@ -119,8 +117,10 @@ func _ready():
 				userToken = msgJson.access_token
 				#base_url = msgJson.well_known["m.homeserver"].base_url
 				userData['login'] = msgJson
+				home_server = userData.login.user_id.split(':')[1]
 				userData['login']['home_server'] = home_server
 				saveUserDict()
+				
 				if userToken != "":
 					headers.push_back("Authorization: Bearer {0}".format([userToken]))
 					#print(headers)
@@ -175,52 +175,7 @@ func _ready():
 			print("error getting messages")
 	)
 	## PROCESS SYNC DATA
-	api.synced.connect(func(result:int,response_code:int,header:PackedStringArray,body:PackedByteArray):
-		WorkerThreadPool.add_task(func():
-			var msg = body.get_string_from_ascii()
-			var msgJson = JSON.parse_string(msg)
-			if msgJson:
-				if msgJson.has('next_batch'):
-					userData.next_batch = msgJson.next_batch
-					next_batch = msgJson.next_batch
-				if "rooms" in msgJson:
-					#print('has rooms')
-					#print(msgJson.rooms)
-					if "join" in msgJson.rooms:
-						#print('has join')
-						#print(msgJson.rooms.join)
-						for room in msgJson.rooms.join:
-							if "timeline" in msgJson.rooms.join[room]:
-								#print(msgJson.rooms.join[room].timeline)
-								if "events" in msgJson.rooms.join[room].timeline:
-									for event in msgJson.rooms.join[room].timeline.events:
-										call_deferred("process_event",event, room)
-										#if "type" in event:
-											#print(event.type)
-										#else:
-											#print("event has no type:\n"+str(event.content))
-							if "state" in msgJson.rooms.join[room]:
-								#print(msgJson.rooms.join)
-								if "events" in msgJson.rooms.join[room].state:
-									for event in msgJson.rooms.join[room].state.events:
-										call_deferred("process_event",event, room)
-									call_deferred("emit_signal","got_room_state",{
-										"room_id": room,
-										"response_code":200,
-										"body":msgJson.rooms.join[room].state.events
-										}
-										)
-					if "leave" in msgJson.rooms:
-						for room in msgJson.rooms.leave:
-							joinedRooms.erase(room)
-							call_deferred("emit_signal", "leave_room",room)
-				print('synced')
-				call_deferred("emit_signal", "synced", msgJson)
-				call_deferred("saveUserDict")
-			else:
-				call_deferred("emit_signal","synced", {"result":result})
-			)
-	)
+	api.synced.connect(_synced)
 	api.got_turn_server.connect(func(result:int,response_code:int,headers:PackedStringArray,body:PackedByteArray):
 		var msg = body.get_string_from_ascii()
 		var msgJson = JSON.parse_string(msg)
@@ -253,8 +208,8 @@ func send_room_event(room_id:String, event_type:String, body:Dictionary):
 func get_turn_server():
 	api.get_turn_server(base_url,headers)
 
-func get_room_messages(room_id:String):
-	api.get_room_messages(base_url,headers,room_id,'b','','',10)
+func get_room_messages(room_id:String, count:int=10):
+	api.get_room_messages(base_url,headers,room_id,'b','','',count)
 
 func get_room_state(room_id):
 	api.get_room_state(base_url, headers, room_id)
@@ -309,14 +264,18 @@ func saveUserDict():
 	var tmpdata :Dictionary = userData.duplicate(true)
 	var toStore = JSON.stringify(tmpdata," ")
 	#var toStore = var_to_bytes(userData)
-	print(toStore.length())
+	#print(toStore.length())
 	file.store_string(toStore)
 	file.close()
 	DirAccess.remove_absolute("user://logins/"+uid.validate_filename()+".data")
 	DirAccess.rename_absolute("user://logins/"+uid.validate_filename()+".datan", "user://logins/"+uid.validate_filename()+".data")
 
 func getExistingSessions() -> PackedStringArray:
-	var files = DirAccess.get_files_at("user://logins/")
+	var dir = DirAccess.open('user://')
+	print("open current directory: "+str(dir.get_current_dir(true))+"\n"+str(dir))
+	if !dir.dir_exists('./logins/'):
+		dir.make_dir('./logins/')
+	var files := DirAccess.get_files_at("user://logins/")
 	return files
 
 func readUserDict(target_login:String=""):
@@ -326,20 +285,30 @@ func readUserDict(target_login:String=""):
 	else:
 		file = FileAccess.open("user://logins/"+target_login,FileAccess.READ_WRITE)
 	if file:
-		WorkerThreadPool.add_task(_load_user_dictionary.bind(file),true)
+		WorkerThreadPool.add_task(_load_user_file.bind(file),true)
 		#_load_user_dictionary(file)
 
-func _load_user_dictionary(file:FileAccess):
+func _load_user_file(file:FileAccess):
 	var read :String= file.get_as_text()
 	userData = JSON.parse_string(read)
+	_load_user_dictionary()
+
+func _load_user_dictionary():
 	# user_id, access_token, home_server, device_id, well_known{m.homeserver{base_url}}
 	if userData['login'].has("access_token"):
 		userToken = userData['login']["access_token"]
 		headers.push_back("Authorization: Bearer {0}".format([userToken]))
 		home_server = userData['login']['user_id'].split(':')[1]
-		base_url = userData['login']['well_known']['m.homeserver']['base_url']
-		if "login" in userData and "user_id" in userData.login:
-			uid = userData.login.user_id
+		if "login" in userData:
+			if "user_id" in userData.login:
+				uid = userData.login.user_id
+			else:
+				push_warning("no userid for some reason")
+			if "well_known" in userData.login and "m.homeserver" in userData.login.well_known and "base_url" in userData.login.well_known["m.homeserver"]:
+				print(userData.login.well_known["m.homeserver"].base_url)
+				base_url = userData['login']['well_known']['m.homeserver']['base_url']
+			else:
+				push_warning("no base_url for some reason")
 		if userData.has('next_batch'):
 			next_batch = userData.next_batch
 		if userData.has('joined_rooms'):
@@ -348,14 +317,70 @@ func _load_user_dictionary(file:FileAccess):
 		#user_logged_in.emit()
 		call_deferred("emit_signal","user_logged_in")
 		#saveUserDict()
-		call_deferred("saveUserDict")
+		#call_deferred("saveUserDict")
+		WorkerThreadPool.add_task(saveUserDict)
 
 func sync():
 	var reqData = {}
-	reqData.timeout = 30
+	reqData.timeout = 1000
 	if !next_batch.is_empty():
 		reqData['since'] = next_batch
 	api.sync(base_url,headers,reqData)
+
+func _synced(result:int,response_code:int,header:PackedStringArray,body:PackedByteArray):
+	WorkerThreadPool.add_task(_synced_thread_pool_task.bind(result,response_code,header,body))
+
+func _synced_thread_pool_task(result:int,response_code:int,header:PackedStringArray,body:PackedByteArray):
+	print_debug("sync response code: ",response_code)
+	print_debug("sync body size: ", body.size())
+	var msg = body.get_string_from_ascii()
+	var msgJson = JSON.parse_string(msg)
+	if msgJson:
+		if msgJson.has('next_batch'):
+			userData.next_batch = msgJson.next_batch
+			next_batch = msgJson.next_batch
+		if "rooms" in msgJson:
+			#print('has rooms')
+			#print(msgJson.rooms)
+			if "join" in msgJson.rooms:
+				#print('has join')
+				#print(msgJson.rooms.join)
+				for room in msgJson.rooms.join:
+					if "timeline" in msgJson.rooms.join[room]:
+						#print(msgJson.rooms.join[room].timeline)
+						if "events" in msgJson.rooms.join[room].timeline:
+							for event in msgJson.rooms.join[room].timeline.events:
+								#process_event(event, room)
+								call_deferred("process_event", event,  room)
+								#if "type" in event:
+									#print(event.type)
+								#else:
+									#print("event has no type:\n"+str(event.content))
+					if "state" in msgJson.rooms.join[room]:
+						#print(msgJson.rooms.join)
+						if "events" in msgJson.rooms.join[room].state:
+							for event in msgJson.rooms.join[room].state.events:
+								#process_event(event, room)
+								call_deferred("process_event", event,  room)
+							call_deferred("emit_signal","got_room_state",{
+								"room_id": room,
+								"response_code":200,
+								"body":msgJson.rooms.join[room].state.events
+								}
+								)
+			if "leave" in msgJson.rooms:
+				for room in msgJson.rooms.leave:
+					joinedRooms.erase(room)
+					call_deferred("emit_signal", "leave_room",room)
+		saveUserDict()
+		call_deferred("emit_signal", "synced", msgJson)
+		#emit_signal("synced", msgJson)
+		#call_deferred("saveUserDict")
+	else:
+		call_deferred("emit_signal","synced", {"result":result})
+	if fresh_login:
+		fresh_login = false
+		_load_user_dictionary()
 
 func process_event(event:Dictionary, roomid:String=""):
 	if !roomid.is_empty():
@@ -424,6 +449,8 @@ func process_event(event:Dictionary, roomid:String=""):
 							"m.image":
 								got_new_message.emit(event)
 								# TODO get the media here 
+							"m.file":
+								got_new_message.emit(event)
 				"bark.session.request":
 					got_new_message.emit(event)
 				"bark.session.offer":
