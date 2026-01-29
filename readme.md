@@ -1,4 +1,4 @@
-# fabric_api
+# prints_api
 
 this is a tool to make easier, the use of various API in godot.
 
