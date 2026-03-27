@@ -1,0 +1,28 @@
+[gd_scene format=3 uid="uid://0uqlujrwg2iq"]
+
+[ext_resource type="Script" uid="uid://b5co2qhbthauv" path="res://chat_example.gd" id="1_x438c"]
+
+[node name="chat_example" type="Control" unique_id=1828676383]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_x438c")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=1645033137]
+layout_mode = 1
+anchors_preset = 13
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -34.0
+offset_right = 34.0
+grow_horizontal = 2
+grow_vertical = 2
+alignment = 1
+
+[node name="homeserver" type="LineEdit" parent="VBoxContainer" unique_id=2078366668]
+unique_name_in_owner = true
+layout_mode = 2

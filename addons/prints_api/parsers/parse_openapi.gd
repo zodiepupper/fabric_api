@@ -4,15 +4,16 @@
 class_name ParseOpenapiToGdscript
 extends EditorScript
 
-## the template for each API endpoint we wanna generate methods for
+## the template method that is used for each endpoint
 ## 
-## this template requires the following:
-## {operationId}		- names the method and signal
-## {path_description}	- the docs summary of this specific endpoint
-## {METHOD}				- which HTTP method this endpoint requires
+## this template requires the following:[br]
+## {operationId}		- names the method and signal[br]
+## {path_description}	- the docs summary of this specific endpoint[br]
+## {METHOD}				- which HTTP method this endpoint requires[br]
+## {function_parameters}- a list of parameters to embed in the function like "filter:String='default_value',"[br]
 var function_template : String = """
 signal signal_{operationId}
-## Matrix endpoint: {operationId}
+## endpoint: {operationId}
 ##
 ## {path_description}
 func request_{operationId}(base_url:String='', headers:Array=[], {function_parameters}):
@@ -60,9 +61,9 @@ func request_{operationId}(base_url:String='', headers:Array=[], {function_param
 ## be called in the editor, on demand
 func _run() -> void:
 	print_debug('start parsing api')
-	var url_to_json := "res://addons/vector/matrix_spec/matrix_openapi.json"
+	var url_to_json := "res://addons/prints_api/matrix_spec/matrix_openapi.json"
 	var output := ""
-	output += "class_name " + url_to_json.get_basename() + "wfwefew\n\n"
+	output += "class_name " + url_to_json.get_basename() + "\n\n"
 	print_debug("we are gonna try to parse: ", url_to_json)
 	# we start by reading the file to a string so...
 	var json_text := FileAccess.open(url_to_json, FileAccess.READ).get_as_text()
@@ -70,7 +71,7 @@ func _run() -> void:
 	if json_text:
 		# use the JSON type to parse it...
 		var json := JSON.parse_string(json_text)
-		# if we succeed again...
+		# if it succeeds again...
 		if json:
 			print_debug("JSON loaded")
 			print(typeof(json))
@@ -101,7 +102,7 @@ func _run() -> void:
 						# use something else for the name later on.
 						if "operationId" in paths[path][method]:
 							# if it has all the fields we are looking for, we can use the format
-							# method on the template String to generate the final api.gd 
+							# method on the template String to generate the final api gdscript file
 							#
 							# the way the format method is setup here is so each entry in the array
 							# passed to .format(), needs to be (a touple ideally) an array with only
@@ -109,6 +110,7 @@ func _run() -> void:
 							# to replace with the second entry of the array.
 							# so: "dog says {dogsound}".format( [ ["dogsound", "woof"] ] ) would become
 							# "dog says woof"
+							print_debug("path: ", path, "\n method: ", method, "\n output: ", output)
 							output += function_template.format(
 								[
 									["operationId", paths[path][method]["operationId"]],

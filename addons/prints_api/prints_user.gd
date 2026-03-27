@@ -1,3 +1,3 @@
-class_name VectorUser
+class_name PrintsUser
 
 var username : String

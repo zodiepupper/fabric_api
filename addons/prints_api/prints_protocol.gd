@@ -10,7 +10,7 @@
 ## [br]- [code]send (and optionally delete/edit) messages[/code]
 ##
 ## [br][br]more features might be handled later
-class_name VectorProtocol
+class_name PrintsProtocol
 
 var login_summons_browser := false
 

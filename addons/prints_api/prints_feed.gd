@@ -1,6 +1,6 @@
-## Schema class for interacting with known feeds from a [code]VectorProtocol[/code]
+## Schema class for interacting with known feeds from a [code]PrintsProtocol[/code]
 ##
-class_name VectorFeed
+class_name PrintsFeed
 
 ## tracks all posts in this feed, the last entry in the list is the newest post
 var posts

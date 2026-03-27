@@ -5,7 +5,7 @@ class_name vector
 extends Node
 
 # import scripts
-var api_script = preload("res://addons/vector/api.gd")
+var api_script = preload("./old_api.gd")
 
 # create vars for script objects
 var api = api_script.new()
